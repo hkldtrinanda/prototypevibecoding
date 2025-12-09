@@ -236,23 +236,52 @@ function printReceipt() {
     if (!t) return alert("Tidak ada transaksi!");
 
     let html = `
-        <html><head><title>Struk Pembayaran</title></head>
-        <body style="font-family:Arial; padding:20px;">
-        <h2>Struk Pembayaran</h2>
-        <p><b>${t.code}</b></p>
-        <p>Metode: ${t.paymentMethod}</p>
-        <p>Tanggal: ${new Date(t.timestamp).toLocaleString('id-ID')}</p>
-        <hr>
+    <html>
+    <head>
+        <title>Struk Pembayaran</title>
+        <style>
+            body {
+                width: 58mm;
+                font-family: 'Arial', sans-serif;
+                font-size: 11px;
+                padding: 2mm;
+                margin: 0;
+            }
+            .center { text-align: center; }
+            .line { border-top: 1px dashed #000; margin: 4px 0; }
+            .row { display: flex; justify-content: space-between; }
+            .item-name { width: 65%; }
+            .item-qty { width: 10%; text-align:center; }
+            .item-total { width: 25%; text-align:right; }
+        </style>
+    </head>
+
+    <body>
+        <div class="center"><strong>STRUK PEMBAYARAN</strong></div>
+        <div class="center">${t.code}</div>
+        <div>${new Date(t.timestamp).toLocaleString('id-ID')}</div>
+        <div class="line"></div>
     `;
 
     t.items.forEach(i => {
-        html += `<p>${i.name} x ${i.qty} — Rp ${(i.currentPrice*i.qty).toLocaleString()}</p>`;
+        html += `
+        <div class="row">
+            <div class="item-name">${i.name}</div>
+            <div class="item-qty">${i.qty}x</div>
+            <div class="item-total">Rp ${(i.currentPrice * i.qty).toLocaleString()}</div>
+        </div>
+        `;
     });
 
     html += `
-        <hr>
-        <h3>Total: Rp ${t.total.toLocaleString('id-ID')}</h3>
-        </body></html>
+        <div class="line"></div>
+        <div class="row">
+            <strong>Total</strong>
+            <strong>Rp ${t.total.toLocaleString()}</strong>
+        </div>
+        <div class="center" style="margin-top:10px;">Terima kasih!</div>
+    </body>
+    </html>
     `;
 
     const w = window.open("", "", "width=400,height=600");
@@ -260,6 +289,7 @@ function printReceipt() {
     w.document.close();
     w.print();
 }
+
 
 /* ============================================================
    HISTORY SYSTEM
