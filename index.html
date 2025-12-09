@@ -9,166 +9,97 @@
 
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🛒 POS Cashier System</h1>
-            <p>Point of Sale Management — Multi-step Payment</p>
+        <div class="left-section">
+            <h1>📱 Menu Minuman</h1>
+            <div class="categories" id="categories"></div>
+            <div class="menu-grid" id="menuGrid"></div>
         </div>
 
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('pos')">Kasir</button>
-            <button class="tab" onclick="switchTab('products')">Kelola Produk</button>
-            <button class="tab" onclick="switchTab('dashboard')">Dashboard</button>
-        </div>
-
-        <!-- POS Tab -->
-        <div id="pos" class="tab-content active">
-            <div class="pos-layout">
-                <div>
-                    <h2>Pilih Produk</h2>
-                    <div class="products-grid" id="productsGrid"></div>
-                </div>
-
-                <div class="cart-section">
-                    <div class="cart-header">🛍️ Keranjang</div>
-                    <div class="cart-items" id="cartItems"></div>
-
-                    <div class="cart-total">
-                        <div class="total-label">Total Pembayaran</div>
-                        <div class="total-amount" id="totalAmount">Rp 0</div>
-                    </div>
-
-                    <div class="action-buttons">
-                        <button class="btn btn-print" onclick="startPaymentFlow()">💳 Pembayaran</button>
-                        <button class="btn btn-clear" onclick="clearCart()">🗑️ Hapus Semua</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Products Management -->
-        <div id="products" class="tab-content">
-            <h2>Kelola Produk</h2>
-
-            <div class="add-product-form">
-                <h3>Tambah Produk Baru</h3>
-                <div class="form-group">
-                    <label>Nama Produk</label>
-                    <input type="text" id="productName">
-                </div>
-                <div class="form-group">
-                    <label>Harga (Rp)</label>
-                    <input type="number" id="productPrice">
-                </div>
-                <button class="btn btn-add" onclick="addProduct()">➕ Tambah Produk</button>
+        <div class="right-section">
+            <div class="cart-header">
+                <h2>🛒 Keranjang</h2>
+                <button class="btn" onclick="showHistory()" 
+                style="padding:8px 15px; background:#339af0; color:white; border-radius:8px; font-size:14px;">
+                    📜 Riwayat
+                </button>
             </div>
 
-            <div class="products-management" id="productsManagement"></div>
-        </div>
-
-        <!-- Dashboard -->
-        <div id="dashboard" class="tab-content">
-            <h2>Dashboard Penjualan</h2>
-
-            <div class="dashboard-grid">
-                <div class="stat-card"><div>Total Transaksi</div><div class="stat-value" id="totalTransactions">0</div></div>
-                <div class="stat-card"><div>Total Pendapatan</div><div class="stat-value" id="totalRevenue">Rp 0</div></div>
-                <div class="stat-card"><div>Rata-rata</div><div class="stat-value" id="avgTransaction">Rp 0</div></div>
+            <div class="cart-items" id="cartItems">
+                <div class="empty-cart"><p>Keranjang masih kosong</p></div>
             </div>
 
-            <div id="transactionsList"></div>
-        </div>
-    </div>
-
-    <!-- Print Area -->
-    <div id="printArea" class="print-area">
-        <div style="padding:20px; max-width:320px;">
-            <h2 style="text-align:center;">STRUK PEMBAYARAN</h2>
-            <p><strong>Tanggal:</strong> <span id="printDate"></span></p>
-            <p><strong>No. Transaksi:</strong> <span id="printTransactionNo"></span></p>
-            <div id="printItems"></div>
-            <div id="printSummary"></div>
-        </div>
-    </div>
-
-    <!-- Payment Popup -->
-    <div id="paymentPopupOverlay" class="payment-popup-overlay">
-        <div class="payment-popup">
-            <div class="payment-header">
-                <strong>Pembayaran</strong>
-                <button onclick="closePaymentFlow()">✕</button>
-            </div>
-
-            <div class="payment-steps">
-                <div class="step active" data-step="1">1. Cek</div>
-                <div class="step" data-step="2">2. Metode</div>
-                <div class="step" data-step="3">3. Bayar</div>
-                <div class="step" data-step="4">4. Selesai</div>
-            </div>
-
-            <div class="payment-body">
-
-                <!-- Step 1 -->
-                <div class="payment-step" data-step="1">
-                    <div id="paymentItems"></div>
-                    <label>Diskon (%)</label>
-                    <input id="inputDiscount" type="number" min="0" max="100" value="0">
-                    <label>PPN (%)</label>
-                    <input id="inputTax" type="number" min="0" max="100" value="0">
-                    <div id="step1Summary"></div>
+            <div class="cart-summary">
+                <div class="summary-row">
+                    <span>Subtotal:</span><span id="subtotal">Rp 0</span>
+                </div>
+                <div class="summary-row total-row">
+                    <span>Total:</span><span id="total">Rp 0</span>
                 </div>
 
-                <!-- Step 2 -->
-                <div class="payment-step" data-step="2" style="display:none;">
-                    <div class="method-list">
-                        <div class="method-card" onclick="selectMethod('qris', this)">QRIS</div>
-                        <div class="method-card" onclick="selectMethod('cash', this)">Cash</div>
-                        <div class="method-card" onclick="selectMethod('transfer', this)">Transfer</div>
-                    </div>
-                    <div id="methodDetails" class="muted"></div>
-                    <div id="step2Summary"></div>
+                <div class="action-buttons">
+                    <button class="btn btn-clear" onclick="clearCart()">🗑️ Hapus Semua</button>
+                    <button class="btn btn-pay" onclick="showPaymentModal()">💳 Bayar</button>
                 </div>
-
-                <!-- Step 3 -->
-                <div class="payment-step" data-step="3" style="display:none;">
-                    <div id="cashArea" style="display:none;">
-                        <div>Total: <strong id="cashTotalLabel">Rp 0</strong></div>
-                        <input id="inputCashReceived" type="number" placeholder="Uang diterima">
-                        <div>Kembalian: <span id="cashChangeLabel">Rp 0</span></div>
-                    </div>
-
-                    <div id="qrisArea" style="display:none;">
-                        <p>Scan QR</p>
-                        <img id="qrisImage" src="img/qris-dummy.png" class="payment-image">
-                    </div>
-
-                    <div id="transferArea" style="display:none;">
-                        <p>Transfer ke BNI 1234567890</p>
-                    </div>
-
-                    <div id="step3Summary"></div>
-                </div>
-
-                <!-- Step 4 -->
-                <div class="payment-step" data-step="4" style="display:none;">
-                    <div id="finalSummaryArea"></div>
-                </div>
-            </div>
-
-            <div class="footer-buttons">
-                <button class="btn-secondary" onclick="prevPaymentStep()">Kembali</button>
-                <button class="btn-primary" id="nextPaymentBtn" onclick="nextPaymentStep()">Lanjut</button>
-                <button class="btn-danger" id="processPaymentBtn" style="display:none;" onclick="finishPaymentProcess()">✔ Proses & Print</button>
-                <button class="btn-danger" onclick="closePaymentFlow()">Batal</button>
             </div>
         </div>
     </div>
 
-    <!-- IMAGE ZOOM MODAL -->
-    <div id="imgZoomOverlay" class="img-zoom-overlay" style="display:none;">
-        <img id="imgZoomFull" class="img-zoom-full" src="img/qris-dummy.png">
+    <!-- PAYMENT MODAL -->
+    <div class="modal" id="paymentModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Pilih Metode Pembayaran</h2>
+                <button class="close-btn" onclick="closePaymentModal()">×</button>
+            </div>
+
+            <div class="payment-methods">
+                <div class="payment-method" onclick="selectPayment('cash', event)">
+                    <div class="payment-icon">💵</div>
+                    <div><h3>Cash</h3><p style="color:#999;font-size:14px;">Tunai</p></div>
+                </div>
+
+                <div class="payment-method" onclick="selectPayment('qris', event)">
+                    <div class="payment-icon">📱</div>
+                    <div><h3>QRIS</h3><p style="color:#999;font-size:14px;">Scan QR Code</p></div>
+                </div>
+
+                <div class="payment-method" onclick="selectPayment('transfer', event)">
+                    <div class="payment-icon">🏦</div>
+                    <div><h3>Transfer Bank</h3><p style="color:#999;font-size:14px;">Transfer Manual</p></div>
+                </div>
+            </div>
+
+            <div id="qrisContainer" style="display:none;">
+                <svg class="qris-image" viewBox="0 0 200 200">
+                    <rect width="200" height="200" fill="white"/>
+                    <rect x="20" y="20" width="60" height="60" fill="black"/>
+                    <rect x="30" y="30" width="40" height="40" fill="white"/>
+                    <rect x="40" y="40" width="20" height="20" fill="black"/>
+                </svg>
+                <p style="text-align:center;color:#999;margin-top:10px;">Scan QR Code untuk pembayaran</p>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="confirm-payment-btn" id="confirmPayBtn" style="display:none;"
+                onclick="processPayment()">Konfirmasi</button>
+
+                <button class="confirm-payment-btn" id="printBtn" style="background:#339af0; display:none;"
+                onclick="printReceipt()">Print</button>
+            </div>
+        </div>
     </div>
 
+    <!-- HISTORY MODAL -->
+    <div class="modal" id="historyModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Riwayat Pesanan</h2>
+                <button class="close-btn" onclick="closeHistory()">×</button>
+            </div>
+            <div id="historyList"></div>
+        </div>
+    </div>
 
-<script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
