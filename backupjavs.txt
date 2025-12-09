@@ -1,0 +1,491 @@
+
+    // ---------- Initial Data ----------
+    let products = [
+        { id: 1, name: 'Nasi Goreng', price: 15000 },
+        { id: 2, name: 'Mie Goreng', price: 12000 },
+        { id: 3, name: 'Ayam Goreng', price: 18000 },
+        { id: 4, name: 'Es Teh', price: 5000 },
+        { id: 5, name: 'Es Jeruk', price: 6000 },   
+        { id: 6, name: 'Kopi', price: 7000 }
+    ];
+    let cart = [];
+    let transactions = [];
+
+    // WhatsApp target number (format internasional, contoh Indonesia)
+    const waNumber = "6285129073691"; // <-- ganti nomor tujuan di sini
+
+    // Payment flow state
+    let paymentState = {
+        step: 1,
+        selectedMethod: null, // 'cash' | 'qris' | 'transfer'
+        discountPct: 0,
+        taxPct: 0,
+        qrisFeePct: 1.5, // contoh fee QRIS 1.5%
+        cashReceived: 0
+    };
+
+    // ---------- Tabs ----------
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        try { event.target.classList.add('active'); } catch(e){}
+        document.getElementById(tabName).classList.add('active');
+
+        if (tabName === 'dashboard') updateDashboard();
+        if (tabName === 'products') renderProductsManagement();
+    }
+
+    // ---------- Products render ----------
+    function renderProducts() {
+        const grid = document.getElementById('productsGrid');
+        grid.innerHTML = products.map(p => `
+            <div class="product-card" onclick="addToCart(${p.id})">
+                <div class="product-name">${p.name}</div>
+                <div class="product-price">Rp ${p.price.toLocaleString('id-ID')}</div>
+            </div>
+        `).join('');
+    }
+
+    // ---------- Cart ----------
+    function addToCart(productId) {
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+        const existing = cart.find(i => i.id === productId);
+        if (existing) existing.quantity++;
+        else cart.push({ ...product, quantity: 1 });
+        renderCart();
+    }
+
+    function renderCart() {
+        const cartDiv = document.getElementById('cartItems');
+        if (cart.length === 0) {
+            cartDiv.innerHTML = '<p style="text-align:center;color:#999;">Keranjang kosong</p>';
+        } else {
+            cartDiv.innerHTML = cart.map(item => `
+                <div class="cart-item">
+                    <div class="cart-item-header">
+                        <span class="cart-item-name">${item.name}</span>
+                        <button class="remove-btn" onclick="removeFromCart(${item.id})">✕</button>
+                    </div>
+                    <div style="font-size:14px;color:#666;">Rp ${item.price.toLocaleString('id-ID')} / item</div>
+                    <div class="quantity-controls">
+                        <button class="qty-btn" onclick="decreaseQuantity(${item.id})">-</button>
+                        <span class="qty-display">${item.quantity}</span>
+                        <button class="qty-btn" onclick="increaseQuantity(${item.id})">+</button>
+                    </div>
+                    <div class="item-subtotal">Subtotal: Rp ${(item.price * item.quantity).toLocaleString('id-ID')}</div>
+                </div>
+            `).join('');
+        }
+        updateTotal();
+    }
+
+    function increaseQuantity(productId) {
+        const it = cart.find(i => i.id === productId); if (it) { it.quantity++; renderCart(); }
+    }
+    function decreaseQuantity(productId) {
+        const it = cart.find(i => i.id === productId); if (it && it.quantity > 1) { it.quantity--; renderCart(); }
+    }
+    function removeFromCart(productId) {
+        cart = cart.filter(i => i.id !== productId); renderCart();
+    }
+    function clearCart() {
+        if (cart.length > 0 && confirm('Hapus semua item dari keranjang?')) {
+            cart = []; renderCart();
+        }
+    }
+
+    function updateTotal() {
+        const total = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+        document.getElementById('totalAmount').textContent = `Rp ${total.toLocaleString('id-ID')}`;
+    }
+
+    // ---------- Payment Flow (multi-step) ----------
+    function startPaymentFlow() {
+        if (cart.length === 0) { alert('Keranjang masih kosong!'); return; }
+        // reset payment state defaults (keep qrisFeePct)
+        paymentState.step = 1;
+        paymentState.selectedMethod = null;
+        paymentState.discountPct = 0;
+        paymentState.taxPct = 0;
+        paymentState.cashReceived = 0;
+        document.getElementById('inputDiscount').value = 0;
+        document.getElementById('inputTax').value = 0;
+        document.getElementById('inputCashReceived').value = '';
+        showPaymentStep(1);
+        document.getElementById('paymentPopupOverlay').style.display = 'flex';
+        document.getElementById('paymentPopupOverlay').setAttribute('aria-hidden','false');
+        renderStep1(); updateStepSummaries();
+    }
+
+    function closePaymentFlow() {
+        document.getElementById('paymentPopupOverlay').style.display = 'none';
+        document.getElementById('paymentPopupOverlay').setAttribute('aria-hidden','true');
+    }
+
+    function showPaymentStep(step) {
+        paymentState.step = step;
+        document.querySelectorAll('.payment-step').forEach(el => el.style.display = 'none');
+        const el = document.querySelector(`.payment-step[data-step="${step}"]`);
+        if (el) el.style.display = 'block';
+        document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.step').forEach(s => { if (parseInt(s.dataset.step) === step) s.classList.add('active'); });
+
+        // Show NEXT button for steps 1..3, show PROCESS for step 4
+        if (step === 1 || step === 2 || step === 3) {
+            document.getElementById('nextPaymentBtn').style.display = 'inline-block';
+            document.getElementById('processPaymentBtn').style.display = 'none';
+        }
+        if (step === 4) {
+            document.getElementById('nextPaymentBtn').style.display = 'none';
+            document.getElementById('processPaymentBtn').style.display = 'inline-block';
+        }
+    }
+
+    function nextPaymentStep() {
+        if (paymentState.step === 1) {
+            const d = parseFloat(document.getElementById('inputDiscount').value) || 0;
+            const t = parseFloat(document.getElementById('inputTax').value) || 0;
+
+            if (d < 0 || d > 100 || t < 0 || t > 100) {
+                alert('Masukkan diskon/PPN antara 0–100%');
+                return;
+            }
+
+            paymentState.discountPct = d;
+            paymentState.taxPct = t;
+
+            renderStep2();
+            showPaymentStep(2);
+
+        } else if (paymentState.step === 2) {
+            if (!paymentState.selectedMethod) {
+                alert("Pilih metode pembayaran dulu!");
+                return;
+            }
+
+            renderStep3();
+            showPaymentStep(3);
+
+        } else if (paymentState.step === 3) {
+            // TRANSITION STEP 3 ➜ STEP 4
+            const totals = computeTotals();
+
+            if (paymentState.selectedMethod === 'cash') {
+                const cashVal = parseFloat(document.getElementById('inputCashReceived').value) || 0;
+
+                if (cashVal < totals.grandTotal) {
+                    if (!confirm('Uang kurang dari total. Tetap lanjut?')) return;
+                }
+
+                paymentState.cashReceived = cashVal;
+            }
+
+            // GO TO FINAL STEP
+            renderFinalStep();
+            showPaymentStep(4);
+
+            // TOMBOL SELESAI tampil
+            document.getElementById("nextPaymentBtn").style.display = "none";
+            document.getElementById("processPaymentBtn").style.display = "inline-block";
+        }
+    }
+
+    function prevPaymentStep() {
+        if (paymentState.step > 1) {
+            showPaymentStep(paymentState.step - 1);
+        } else {
+            closePaymentFlow();
+        }
+    }
+
+    function renderStep1() {
+        // list items
+        const list = document.getElementById('paymentItems');
+        list.innerHTML = cart.map(it => `
+            <div class="payment-item">
+                <div>${it.name} (x${it.quantity})</div>
+                <div>Rp ${(it.price * it.quantity).toLocaleString('id-ID')}</div>
+            </div>
+        `).join('');
+        updateStepSummaries();
+    }
+
+    function selectMethod(method, el) {
+        paymentState.selectedMethod = method;
+        document.querySelectorAll('.method-card').forEach(c => c.classList.remove('selected'));
+        if (el) el.classList.add('selected');
+        // update details and images
+        const details = document.getElementById('methodDetails');
+        const img = document.getElementById('methodImage');
+        const qrisLabel = document.getElementById('qrisFeeLabel');
+        qrisLabel.textContent = `${paymentState.qrisFeePct}%`;
+        if (method === 'qris') {
+            details.innerHTML = 'Pembayaran cepat via QRIS. Akan dikenakan fee merchant sebesar ' + paymentState.qrisFeePct + '%';
+            img.style.display = 'block';
+            img.src = 'img/qris-dummy.png';
+        } else if (method === 'cash') {
+            details.innerHTML = 'Tunai — input jumlah uang diterima, sistem akan menghitung kembalian.';
+            img.style.display = 'none';
+        } else if (method === 'transfer') {
+            details.innerHTML = 'Transfer bank — berikan instruksi transfer dan verifikasi manual.';
+            img.style.display = 'none';
+        }
+        updateStepSummaries();
+    }
+
+    function renderStep2() {
+        // initial select default if not chosen
+        if (!paymentState.selectedMethod) {
+            const defaultCard = document.querySelector('.method-card[data-method="qris"]');
+            selectMethod('qris', defaultCard);
+        }
+        updateStepSummaries();
+    }
+
+    function renderStep3() {
+        // show area depending on method
+        document.getElementById('cashArea').style.display = 'none';
+        document.getElementById('qrisArea').style.display = 'none';
+        document.getElementById('transferArea').style.display = 'none';
+        if (paymentState.selectedMethod === 'cash') {
+            document.getElementById('cashArea').style.display = 'block';
+            document.getElementById('cashTotalLabel').textContent = `Rp ${computeTotals().grandTotal.toLocaleString('id-ID')}`;
+            // attach input listener
+            const input = document.getElementById('inputCashReceived');
+            input.value = paymentState.cashReceived ? paymentState.cashReceived : '';
+            input.oninput = function() {
+                const val = parseFloat(this.value) || 0;
+                paymentState.cashReceived = val;
+                const change = Math.max(0, val - computeTotals().grandTotal);
+                document.getElementById('cashChangeLabel').textContent = `Rp ${change.toLocaleString('id-ID')}`;
+            };
+        } else if (paymentState.selectedMethod === 'qris') {
+            document.getElementById('qrisArea').style.display = 'block';
+            // show qris image & fee
+            document.getElementById('qrisImage').src = 'img/qris-dummy.png';
+        } else if (paymentState.selectedMethod === 'transfer') {
+            document.getElementById('transferArea').style.display = 'block';
+        }
+        updateStepSummaries();
+    }
+
+    function renderFinalStep() {
+        const totals = computeTotals();
+        const area = document.getElementById('finalSummaryArea');
+        let html = '';
+        html += `<div class="small">Subtotal: Rp ${totals.subtotal.toLocaleString('id-ID')}</div>`;
+        html += `<div class="small">Diskon: ${paymentState.discountPct}% (-Rp ${totals.discountAmount.toLocaleString('id-ID')})</div>`;
+        html += `<div class="small">PPN: ${paymentState.taxPct}% (+Rp ${totals.taxAmount.toLocaleString('id-ID')})</div>`;
+        if (paymentState.selectedMethod === 'qris') {
+            html += `<div class="small">Fee QRIS: ${paymentState.qrisFeePct}% (+Rp ${totals.qrisFee.toLocaleString('id-ID')})</div>`;
+        }
+        html += `<div style="margin-top:8px; font-weight:bold;">GRAND TOTAL: Rp ${totals.grandTotal.toLocaleString('id-ID')}</div>`;
+        if (paymentState.selectedMethod === 'cash') {
+            html += `<div class="small">Dibayar (tunai): Rp ${ (paymentState.cashReceived || 0).toLocaleString('id-ID') }</div>`;
+            const change = Math.max(0, (paymentState.cashReceived||0) - totals.grandTotal);
+            html += `<div class="small">Kembalian: Rp ${change.toLocaleString('id-ID')}</div>`;
+        } else {
+            html += `<div class="small">Metode: ${paymentState.selectedMethod.toUpperCase()}</div>`;
+        }
+        area.innerHTML = html;
+    }
+
+    function updateStepSummaries() {
+        const totals = computeTotals();
+        document.getElementById('step1Summary').textContent = `Subtotal: Rp ${totals.subtotal.toLocaleString('id-ID')} | Est. Grand: Rp ${totals.grandTotal.toLocaleString('id-ID')}`;
+        document.getElementById('step2Summary').textContent = `Metode: ${paymentState.selectedMethod ? paymentState.selectedMethod.toUpperCase() : '-'} | Est. Grand: Rp ${totals.grandTotal.toLocaleString('id-ID')}`;
+        document.getElementById('step3Summary').textContent = `Bayar: Rp ${totals.grandTotal.toLocaleString('id-ID')}`;
+    }
+
+    // Compute totals with discount, tax, qris fee
+    function computeTotals() {
+        const subtotal = cart.reduce((s,i) => s + i.price * i.quantity, 0);
+        const discountAmount = Math.round(subtotal * (paymentState.discountPct / 100));
+        const afterDiscount = subtotal - discountAmount;
+        const taxAmount = Math.round(afterDiscount * (paymentState.taxPct / 100));
+        let qrisFee = 0;
+        if (paymentState.selectedMethod === 'qris') {
+            qrisFee = Math.round((afterDiscount + taxAmount) * (paymentState.qrisFeePct / 100));
+        }
+        const grandTotal = Math.max(0, afterDiscount + taxAmount + qrisFee);
+        return { subtotal, discountAmount, taxAmount, qrisFee, grandTotal };
+    }
+
+    // Finalize and print: generate transaction record and call print
+    function finishPaymentProcess() {
+        // ensure we are on final step or force compute
+        const totals = computeTotals();
+        // Build transaction
+        const now = new Date();
+        const transactionNo = 'TRX' + now.getTime();
+        const dateStr = now.toLocaleString('id-ID');
+        // Build transaction object including payment breakdown
+        const tx = {
+            id: transactionNo,
+            date: dateStr,
+            items: cart.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
+            subtotal: totals.subtotal,
+            discountPct: paymentState.discountPct,
+            discountAmount: totals.discountAmount,
+            taxPct: paymentState.taxPct,
+            taxAmount: totals.taxAmount,
+            qrisFeePct: paymentState.selectedMethod === 'qris' ? paymentState.qrisFeePct : 0,
+            qrisFee: totals.qrisFee,
+            grandTotal: totals.grandTotal,
+            method: paymentState.selectedMethod || 'unknown',
+            cashReceived: paymentState.selectedMethod === 'cash' ? (paymentState.cashReceived || 0) : 0,
+            change: paymentState.selectedMethod === 'cash' ? Math.max(0, (paymentState.cashReceived||0) - totals.grandTotal) : 0
+        };
+        transactions.push(tx);
+
+        // prepare print area
+        preparePrint(tx);
+
+        // send to WhatsApp (text receipt)
+        sendWhatsAppReceipt(tx);
+
+        // hide popup
+        closePaymentFlow();
+
+        // clear cart
+        cart = [];
+        renderCart();
+
+        // update dashboard
+        updateDashboard();
+        alert('Transaksi berhasil! Struk dicetak & dikirim ke WhatsApp.');
+
+    }
+
+    // Prepare and print receipt from transaction object
+    function preparePrint(tx) {
+        document.getElementById('printDate').textContent = tx.date;
+        document.getElementById('printTransactionNo').textContent = tx.id;
+
+        const itemsHtml = tx.items.map(i => `
+            <div style="margin:5px 0; display:flex; justify-content:space-between;">
+                <span>${i.name} (x${i.quantity})</span>
+                <span>Rp ${(i.price * i.quantity).toLocaleString('id-ID')}</span>
+            </div>
+        `).join('');
+        document.getElementById('printItems').innerHTML = itemsHtml;
+
+        let summaryHtml = '';
+        summaryHtml += `<div style="display:flex; justify-content:space-between;"><span>Subtotal</span><span>Rp ${tx.subtotal.toLocaleString('id-ID')}</span></div>`;
+        if (tx.discountAmount && tx.discountAmount > 0) summaryHtml += `<div style="display:flex; justify-content:space-between;"><span>Diskon (${tx.discountPct}%)</span><span>- Rp ${tx.discountAmount.toLocaleString('id-ID')}</span></div>`;
+        if (tx.taxAmount && tx.taxAmount > 0) summaryHtml += `<div style="display:flex; justify-content:space-between;"><span>PPN (${tx.taxPct}%)</span><span>Rp ${tx.taxAmount.toLocaleString('id-ID')}</span></div>`;
+        if (tx.qrisFee && tx.qrisFee > 0) summaryHtml += `<div style="display:flex; justify-content:space-between;"><span>Fee QRIS (${tx.qrisFeePct}%)</span><span>Rp ${tx.qrisFee.toLocaleString('id-ID')}</span></div>`;
+        summaryHtml += `<div style="display:flex; justify-content:space-between; font-weight:bold; margin-top:6px;"><span>TOTAL</span><span>Rp ${tx.grandTotal.toLocaleString('id-ID')}</span></div>`;
+        summaryHtml += `<div style="margin-top:8px; display:flex; justify-content:space-between;"><span>Metode</span><span>${tx.method.toUpperCase()}</span></div>`;
+        if (tx.method === 'cash') {
+            summaryHtml += `<div style="display:flex; justify-content:space-between;"><span>Dibayar</span><span>Rp ${tx.cashReceived.toLocaleString('id-ID')}</span></div>`;
+            summaryHtml += `<div style="display:flex; justify-content:space-between;"><span>Kembalian</span><span>Rp ${tx.change.toLocaleString('id-ID')}</span></div>`;
+        }
+        document.getElementById('printSummary').innerHTML = summaryHtml;
+
+        // Use window.print() without toggling display to ensure printArea is rendered
+        window.print();
+    }
+
+    // ---------- WhatsApp integration ----------
+        function sendWhatsAppReceipt(tx) {
+            const message =
+        `*STRUK PEMBAYARAN*\n
+        No: ${tx.id}
+        Tanggal: ${tx.date}
+
+        Items:
+        ${tx.items.map(i => `${i.name} x${i.quantity} = Rp ${(i.price * i.quantity).toLocaleString('id-ID')}`).join('\n')}
+
+        Subtotal: Rp ${tx.subtotal.toLocaleString('id-ID')}
+        ${tx.discountAmount > 0 ? `Diskon: -Rp ${tx.discountAmount.toLocaleString('id-ID')}` : ``}
+        ${tx.taxAmount > 0 ? `PPN: Rp ${tx.taxAmount.toLocaleString('id-ID')}` : ``}
+        ${tx.qrisFee > 0 ? `Fee QRIS: Rp ${tx.qrisFee.toLocaleString('id-ID')}` : ``}
+
+        *TOTAL: Rp ${tx.grandTotal.toLocaleString('id-ID')}*
+        Metode: ${tx.method.toUpperCase()}
+        ${tx.method === 'cash' ? `Dibayar: Rp ${tx.cashReceived.toLocaleString('id-ID')}\nKembalian: Rp ${tx.change.toLocaleString('id-ID')}` : ``}
+        `;
+
+            const encoded = encodeURIComponent(message);
+
+            const waUrl = `https://web.whatsapp.com/send?phone=${waNumber}&text=${encoded}`;
+
+            // Langsung buka WhatsApp Web SEND page
+            window.open(waUrl, "_blank");
+
+            // Tidak ada alert login lagi
+        }
+
+
+
+    // ---------- Products management ----------
+    function addProduct() {
+        const name = document.getElementById('productName').value.trim();
+        const price = parseInt(document.getElementById('productPrice').value);
+        if (!name || !price || price <= 0) { alert('Mohon isi nama dan harga produk dengan benar!'); return; }
+        const newId = products.length > 0 ? Math.max(...products.map(p => p.id)) + 1 : 1;
+        products.push({ id: newId, name, price });
+        document.getElementById('productName').value = '';
+        document.getElementById('productPrice').value = '';
+        renderProducts(); renderProductsManagement();
+        alert('Produk berhasil ditambahkan!');
+    }
+    function deleteProduct(productId) {
+        if (confirm('Hapus produk ini?')) {
+            products = products.filter(p => p.id !== productId);
+            renderProducts(); renderProductsManagement();
+        }
+    }
+    function renderProductsManagement() {
+        const div = document.getElementById('productsManagement');
+        div.innerHTML = products.map(p => `
+            <div class="product-manage-item">
+                <div class="product-info">
+                    <h3>${p.name}</h3>
+                    <p>Rp ${p.price.toLocaleString('id-ID')}</p>
+                </div>
+                <button class="btn btn-delete" onclick="deleteProduct(${p.id})">🗑️ Hapus</button>
+            </div>
+        `).join('');
+    }
+
+    // ---------- Dashboard ----------
+    function updateDashboard() {
+        const totalTrx = transactions.length;
+        const totalRev = transactions.reduce((s,t) => s + t.grandTotal, 0);
+        const avgTrx = totalTrx > 0 ? Math.round(totalRev / totalTrx) : 0;
+        document.getElementById('totalTransactions').textContent = totalTrx;
+        document.getElementById('totalRevenue').textContent = `Rp ${totalRev.toLocaleString('id-ID')}`;
+        document.getElementById('avgTransaction').textContent = `Rp ${avgTrx.toLocaleString('id-ID')}`;
+
+        const trxList = document.getElementById('transactionsList');
+        if (transactions.length === 0) {
+            trxList.innerHTML = '<p style="text-align:center;color:#999;">Belum ada transaksi</p>';
+        } else {
+            trxList.innerHTML = transactions.slice().reverse().map(t => `
+                <div class="transaction-item">
+                    <div class="transaction-header">
+                        <span>${t.id}</span>
+                        <span>Rp ${t.grandTotal.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div style="font-size:12px;color:#999;margin-bottom:5px;">${t.date} — ${t.method.toUpperCase()}</div>
+                    <div class="transaction-items">
+                        ${t.items.map(i => `${i.name} (x${i.quantity})`).join(', ')}
+                    </div>
+                </div>
+            `).join('');
+        }
+    }
+
+    // ---------- Init ----------
+    renderProducts(); renderCart();
+
+    // expose some helpers for keyboard use (optional)
+    window.startPaymentFlow = startPaymentFlow;
+    window.closePaymentFlow = closePaymentFlow;
+    window.selectMethod = selectMethod;
+    window.nextPaymentStep = nextPaymentStep;
+    window.prevPaymentStep = prevPaymentStep;
+    window.finishPaymentProcess = finishPaymentProcess;
